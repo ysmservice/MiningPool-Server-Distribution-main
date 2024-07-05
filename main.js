@@ -7,6 +7,17 @@ const mainServer = net.createServer((receiverSocket) => {
     const message = JSON.parse(data.toString('utf-8'));
     forwardToMiningPool(message.minerIdentifier, message.data, message.port, receiverSocket, miningPoolSockets);
   });
+
+  receiverSocket.on('error', (err) => {
+    console.error(`Receiver socket error: ${err}`);
+  });
+
+  receiverSocket.on('close', () => {
+    for (let minerIdentifier in miningPoolSockets) {
+      miningPoolSockets[minerIdentifier].end();
+      delete miningPoolSockets[minerIdentifier];
+    }
+  });
 });
 
 function forwardToMiningPool(minerIdentifier, data, port, receiverSocket, miningPoolSockets) {
@@ -24,6 +35,11 @@ function forwardToMiningPool(minerIdentifier, data, port, receiverSocket, mining
     miningPoolSockets[minerIdentifier].on('close', () => {
       delete miningPoolSockets[minerIdentifier];
     });
+
+    miningPoolSockets[minerIdentifier].on('error', (err) => {
+      console.error(`Mining pool socket error: ${err}`);
+      delete miningPoolSockets[minerIdentifier];
+    });
   } else {
     miningPoolSockets[minerIdentifier].write(data);
   }
@@ -31,4 +47,8 @@ function forwardToMiningPool(minerIdentifier, data, port, receiverSocket, mining
 
 mainServer.listen(15299, '0.0.0.0', () => {
   console.log('Main server is listening on port 15299');
+});
+
+mainServer.on('error', (err) => {
+  console.error(`Main server error: ${err}`);
 });
