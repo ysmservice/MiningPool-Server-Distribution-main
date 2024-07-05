@@ -4,8 +4,12 @@ const mainServer = net.createServer((receiverSocket) => {
   const miningPoolSockets = {};
 
   receiverSocket.on('data', (data) => {
-    const message = JSON.parse(data.toString('utf-8'));
-    forwardToMiningPool(message.minerIdentifier, message.data, message.port, receiverSocket, miningPoolSockets);
+    try {
+      const message = JSON.parse(data.toString('utf-8'));
+      forwardToMiningPool(message.minerIdentifier, message.data, message.port, receiverSocket, miningPoolSockets);
+    } catch (err) {
+      console.error(`Received data is not valid JSON: ${data.toString('utf-8')}`);
+    }
   });
 
   receiverSocket.on('error', (err) => {
