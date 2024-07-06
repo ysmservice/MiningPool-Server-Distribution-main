@@ -2,11 +2,17 @@ const net = require('net');
 
 const mainServer = net.createServer((receiverSocket) => {
   const miningPoolSockets = {};
+  const receiverSockets = {};
+
+  const minerIdentifier = `${receiverSocket.remoteAddress}:${receiverSocket.remotePort}`;
+  console.log(`Connect from:${minerIdentifier}`);
+  receiverSockets[minerIdentifier] = receiverSocket;
 
   receiverSocket.on('data', (data) => {
     try {
+      console.log(`Received data: ${data.toString('utf-8')}`);
       const message = JSON.parse(data.toString('utf-8'));
-      forwardToMiningPool(message.minerIdentifier, message.data, message.port, receiverSocket, miningPoolSockets);
+      forwardToMiningPool(minerIdentifier, message.data, message.port, receiverSockets, miningPoolSockets);
     } catch (err) {
       console.error(`Received data is not valid JSON: ${data.toString('utf-8')}`);
     }
@@ -17,23 +23,28 @@ const mainServer = net.createServer((receiverSocket) => {
   });
 
   receiverSocket.on('close', () => {
-    for (let minerIdentifier in miningPoolSockets) {
+    delete receiverSockets[minerIdentifier];
+    if (miningPoolSockets[minerIdentifier]) {
       miningPoolSockets[minerIdentifier].end();
       delete miningPoolSockets[minerIdentifier];
     }
   });
 });
 
-function forwardToMiningPool(minerIdentifier, data, port, receiverSocket, miningPoolSockets) {
+function forwardToMiningPool(minerIdentifier, data, port, receiverSockets, miningPoolSockets) {
   if (!miningPoolSockets[minerIdentifier]) {
+    console.log('Connecting to mining pool');
     miningPoolSockets[minerIdentifier] = new net.Socket();
 
-    miningPoolSockets[minerIdentifier].connect(port, 'localhost', () => {
+    miningPoolSockets[minerIdentifier].connect(port, '127.0.0.1', () => {
       miningPoolSockets[minerIdentifier].write(data);
     });
 
     miningPoolSockets[minerIdentifier].on('data', (response) => {
-      receiverSocket.write(JSON.stringify({ minerIdentifier, data: response.toString('utf-8') }));
+            console.log(`Received data: ${response.toString('utf-8')}`);
+      if (receiverSockets[minerIdentifier]) {
+        receiverSockets[minerIdentifier].write(JSON.stringify({ minerIdentifier, data: response.toString('utf-8') }));
+      }
     });
 
     miningPoolSockets[minerIdentifier].on('close', () => {
@@ -42,6 +53,9 @@ function forwardToMiningPool(minerIdentifier, data, port, receiverSocket, mining
 
     miningPoolSockets[minerIdentifier].on('error', (err) => {
       console.error(`Mining pool socket error: ${err}`);
+      if (receiverSockets[minerIdentifier]) {
+        receiverSockets[minerIdentifier].write(JSON.stringify({ minerIdentifier, error: err.message }));
+      }
       delete miningPoolSockets[minerIdentifier];
     });
   } else {
